@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 from PyPDF2 import PdfReader
+from duckduckgo_search import DDGS
 
 # 1. 网页配置
 st.set_page_config(page_title="Astra", page_icon="💫", layout="wide")
@@ -85,4 +86,3 @@ if user_question := st.chat_input("跟我聊聊你的规划，或者让我帮你
                 
             except Exception as e:
                 st.error(f"联网搜索或生成失败：{e}")
-
