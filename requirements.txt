@@ -3,3 +3,5 @@ streamlit
 openai
 
 pypdf2
+
+duckduckgo-search
