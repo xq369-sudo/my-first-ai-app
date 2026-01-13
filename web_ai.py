@@ -40,8 +40,6 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # 5. 主界面：输入区
-from duckduckgo_search import DDGS # 记得在文件最开头加上这一行
-
 # ... 前面的代码保持不变 ...
 
 if user_question := st.chat_input("跟我聊聊你的规划，或者让我帮你搜搜最新的行业动态..."):
@@ -87,3 +85,4 @@ if user_question := st.chat_input("跟我聊聊你的规划，或者让我帮你
                 
             except Exception as e:
                 st.error(f"联网搜索或生成失败：{e}")
+
