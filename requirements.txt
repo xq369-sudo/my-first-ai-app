@@ -4,4 +4,7 @@ openai
 
 pypdf2
 
+python-docx
+
+duckduckgo-search
 
