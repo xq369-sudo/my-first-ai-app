@@ -10,5 +10,6 @@ python-docx
 
 duckduckgo-search
 
-pytesseract
+
+
 
