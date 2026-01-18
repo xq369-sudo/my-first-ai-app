@@ -1,152 +1,196 @@
 import streamlit as st
 from openai import OpenAI
 from PyPDF2 import PdfReader
-import requests
 from docx import Document 
-from io import BytesIO 
+from io import BytesIO
 
-# 1. 网页配置
-st.set_page_config(page_title="Astra", page_icon="💫", layout="wide")
-st.title("💫 Astra 小星AI (智能联网增强版)")
+# ==========================================
+# 1. 核心页面配置
+# ==========================================
+st.set_page_config(page_title="Astra AI", page_icon="💫", layout="wide")
 
-# --- 初始化对话记忆 ---
+# 引入 CSS，彻底重定义布局
+st.markdown("""
+    <style>
+    .stApp { background-color: #000000; color: #E0E0E0; }
+    
+    /* 1. 隐藏原生输入框和不必要的元素 - 仅隐藏 footer，保留 header 确保开关按钮可见 */
+    div[data-testid="stChatInput"] { display: none; }
+    footer { visibility: hidden; }
+
+    /* 2. 创建 Gemini 风格的一体化底部容器 */
+    .fixed-bottom-container {
+        position: fixed;
+        bottom: 30px;
+        left: 320px; /* 避开侧边栏 */
+        right: 40px;
+        z-index: 999;
+        background: transparent;
+    }
+
+    .gemini-capsule {
+        background-color: #1E1E1E;
+        border-radius: 28px;
+        padding: 8px 20px;
+        display: flex;
+        align-items: center;
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    /* 加号图标样式 */
+    .plus-icon {
+        color: #9E9E9E;
+        font-size: 24px;
+        cursor: pointer;
+        margin-right: 15px;
+        font-weight: 300;
+        transition: color 0.2s;
+    }
+    .plus-icon:hover { color: #ffffff; }
+
+    /* 文本输入区样式 */
+    .custom-input {
+        flex-grow: 1;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 16px;
+        outline: none;
+        padding: 10px 0;
+    }
+    
+    /* 发送按钮样式 */
+    .send-btn {
+        background: none;
+        border: none;
+        color: #757575;
+        cursor: pointer;
+        font-size: 20px;
+        padding-left: 10px;
+    }
+    .send-btn:hover { color: #ffffff; }
+
+    /* 侧边栏样式 */
+    section[data-testid="stSidebar"] { background-color: #121212 !important; }
+    
+    .block-container { padding-bottom: 120px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==========================================
+# 2. 逻辑状态管理
+# ==========================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "file_context" not in st.session_state:
+    st.session_state.file_context = ""
 
-# 2. 初始化客户端
+# --- Word 生成辅助函数 ---
+def export_to_word(msgs):
+    doc = Document()
+    doc.add_heading('Astra AI 对话记录', 0)
+    for m in msgs:
+        role = "用户" if m["role"] == "user" else "Astra AI"
+        doc.add_paragraph(f"【{role}】: {m['content']}")
+    bio = BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+# 获取输入后的回调处理
+def handle_input():
+    if st.session_state.user_text:
+        st.session_state.messages.append({"role": "user", "content": st.session_state.user_text})
+        # 这里清除输入框
+        st.session_state.user_text = ""
+
+# API 配置
 DEEPSEEK_KEY = st.secrets.get("api_key", "sk-0a477b0f3c874c8184f0a2ec168c3f2d")
-TAVILY_KEY = st.secrets.get("TAVILY_API_KEY", "") 
+client = OpenAI(api_key=DEEPSEEK_KEY, base_url="https://api.deepseek.com")
 
-client = OpenAI(
-    api_key=DEEPSEEK_KEY, 
-    base_url="https://api.deepseek.com"
-)
+# ==========================================
+# 3. 页面渲染
+# ==========================================
 
-# 3. 侧边栏：文件处理与智能工具
+# --- 侧边栏 ---
 with st.sidebar:
-    st.header("📂 文件上传")
-    uploaded_file = st.file_uploader("上传 PDF 文档", type="pdf")
-    
-    file_content = ""
-    if uploaded_file:
-        try:
-            reader = PdfReader(uploaded_file)
-            file_content = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-            st.success("✅ 您的文档已装载！")
-        except Exception as e:
-            st.error(f"读取PDF失败: {e}")
-    
-    st.divider()
-
-    # --- 师父秘籍：智能动态导出功能 ---
-    st.subheader("📝 成果导出")
-    
-    if len(st.session_state.messages) > 0:
-        def create_word():
-            doc = Document()
-            
-            # 【功能优化：智能总结标题】
-            # 取第一个问题的前15个字作为核心，如果没有则用默认名
-            raw_title = st.session_state.messages[0]["content"][:15].strip()
-            summary_title = f"关于【{raw_title}】的深度分析报告"
-            
-            # 设置 Word 文档主标题
-            doc.add_heading(summary_title, 0)
-            
-            # 遍历所有对话记录，确保实时同步
-            for msg in st.session_state.messages:
-                role_name = "👤 用户提问" if msg["role"] == "user" else "🤖 Astra 助手回答"
-                doc.add_heading(role_name, level=1)
-                doc.add_paragraph(msg["content"])
-                doc.add_paragraph("-" * 30)
-            
-            buffer = BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-            return buffer, summary_title
-
-        # 生成 Word 数据和动态文件名
-        word_data, file_title = create_word()
-
-        st.download_button(
-            label="✨ 点击下载全量报告 (Word)",
-            data=word_data,
-            file_name=f"{file_title}.docx", 
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="download_btn_pro"
-        )
-        st.caption(f"文件名将自动设为：{file_title}")
-    else:
-        st.info("💡 请先在下方开始对话，我会为您即时准备分析报告。")
-
-    st.divider()
-    if st.button("🗑️ 清空对话记忆"):
+    st.markdown("### 💫 Astra 历史记录")
+    if st.button("➕ 开启新对话", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
-
-# 4. 主界面：展示对话历史
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-# 5. 主界面：输入区
-if user_question := st.chat_input("输入你的问题，或者让Astra帮你搜搜实时动态..."):
     
-    # 存入用户问题
-    st.session_state.messages.append({"role": "user", "content": user_question})
-    with st.chat_message("user"):
-        st.markdown(user_question)
+    if st.session_state.messages:
+        st.markdown("---")
+        st.markdown("##### 📄 文档导出")
+        word_data = export_to_word(st.session_state.messages)
+        st.download_button(
+            label="📥 导出全部对话为 Word",
+            data=word_data,
+            file_name="Astra_Chat_History.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
 
-    # 助手思考与回答
+    st.markdown("---")
+    st.markdown("##### 📁 文档上传")
+    up_file = st.file_uploader("上传 PDF 文档作为知识库", type="pdf")
+    if up_file:
+        reader = PdfReader(up_file)
+        st.session_state.file_context = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
+        st.toast("文档已注入 ASTRA 核心")
+
+# --- 主对话区 ---
+if not st.session_state.messages:
+    st.markdown("<div style='height: 20vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; color:white;'>Astra 小星AI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#757575;'>你好！我是你的智能助手，请问有什么可以帮你的？</p>", unsafe_allow_html=True)
+else:
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+# ==========================================
+# 4. 【核心黑科技】一体化底部对话框
+# ==========================================
+st.markdown('<div class="fixed-bottom-container">', unsafe_allow_html=True)
+c_icon, c_input = st.columns([0.4, 9.6])
+
+with c_icon:
+    with st.popover("＋"):
+        st.write("🔧 扩展功能")
+        st.toggle("开启深度联网", value=True)
+        st.write("更多工具开发中...")
+
+with c_input:
+    st.text_input(
+        "输入消息...", 
+        key="user_text", 
+        on_change=handle_input,
+        label_visibility="collapsed",
+        placeholder="问问 Astra，或者发送消息..."
+    )
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ==========================================
+# 5. AI 响应逻辑
+# ==========================================
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    last_user_msg = st.session_state.messages[-1]["content"]
     with st.chat_message("assistant"):
-        with st.spinner('Astra 正在跨越时空为您整合资料...'):
+        with st.spinner('Astra 正在飞速思考...'):
             try:
-                # --- 智能联网逻辑 ---
-                search_results = ""
-                if TAVILY_KEY:
-                    try:
-                        resp = requests.post(
-                            "https://api.tavily.com/search",
-                            json={"api_key": TAVILY_KEY, "query": user_question, "max_results": 3}
-                        )
-                        results = resp.json().get("results", [])
-                        search_results = "\n".join([f"来源: {r['title']}\n内容: {r['content']}" for r in results])
-                        st.sidebar.info("🌐 已从 Tavily 获取实时动态")
-                    except:
-                        pass
-                
-                if not search_results:
-                    trigger_words = ["搜", "查", "最新", "政策", "2026", "行情", "天气"]
-                    if any(word in user_question for word in trigger_words):
-                        try:
-                            from duckduckgo_search import DDGS
-                            with DDGS() as ddgs:
-                                results = [r for r in ddgs.text(user_question, region='cn-zh', max_results=3)]
-                                if results:
-                                    search_results = "\n".join([f"来源: {r['title']}\n内容: {r['body']}" for r in results])
-                                    st.sidebar.info("🌐 已成功获取联网信息")
-                        except:
-                            pass
+                # --- 核心修复：在这里告诉 AI 当前的正确时间 ---
+                sys_p = "你是 Astra 小星AI。今天的日期是 2026年1月18日。请专业且简洁地回答。"
+                if st.session_state.file_context:
+                    sys_p += f"\n背景资料: {st.session_state.file_context[:2500]}"
 
-                # --- 构造指令 ---
-                system_instruction = "你是一个全能专家，请结合文档和联网信息给出深度、清晰的回答。"
-                if file_content:
-                    system_instruction += f"\n\n【本地文档】：\n{file_content}"
-                if search_results:
-                    system_instruction += f"\n\n【最新联网信息】：\n{search_results}"
-
-                # API 请求
                 res = client.chat.completions.create(
                     model="deepseek-chat",
-                    messages=[{"role": "system", "content": system_instruction}] + st.session_state.messages
+                    messages=[{"role": "system", "content": sys_p}] + st.session_state.messages
                 )
-                
-                answer = res.choices[0].message.content
-                st.markdown(answer)
-                
-                # 关键一步：存入回答并立即重刷页面，确保侧边栏按钮同步获取最新内容
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                st.rerun() 
-                
+                ans = res.choices[0].message.content
+                st.markdown(ans)
+                st.session_state.messages.append({"role": "assistant", "content": ans})
+                st.rerun()
             except Exception as e:
-                st.error(f"抱歉，小星在生成时遇到一点阻碍：{e}")
+                st.error(f"信号微弱，请重试: {e}")
