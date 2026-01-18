@@ -3,6 +3,7 @@ from openai import OpenAI
 from PyPDF2 import PdfReader
 from docx import Document 
 from io import BytesIO
+from datetime import datetime 
 
 # ==========================================
 # 1. 核心页面配置
@@ -14,15 +15,15 @@ st.markdown("""
     <style>
     .stApp { background-color: #000000; color: #E0E0E0; }
     
-    /* 1. 隐藏原生输入框和不必要的元素 - 仅隐藏 footer，保留 header 确保开关按钮可见 */
+    /* 1. 隐藏原生输入框和不必要的元素 */
     div[data-testid="stChatInput"] { display: none; }
     footer { visibility: hidden; }
 
-    /* 2. 创建 Gemini 风格的一体化底部容器 */
+    /* 2. 一体化底部容器 */
     .fixed-bottom-container {
         position: fixed;
         bottom: 30px;
-        left: 320px; /* 避开侧边栏 */
+        left: 320px; 
         right: 40px;
         z-index: 999;
         background: transparent;
@@ -38,43 +39,30 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
 
-    /* 加号图标样式 */
-    .plus-icon {
-        color: #9E9E9E;
-        font-size: 24px;
-        cursor: pointer;
-        margin-right: 15px;
-        font-weight: 300;
-        transition: color 0.2s;
+    /* 科技感按钮样式微调 */
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%) !important;
+        border: none !important;
+        color: white !important;
+        border-radius: 50% !important;
+        width: 38px !important;
+        height: 38px !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    .plus-icon:hover { color: #ffffff; }
-
-    /* 文本输入区样式 */
-    .custom-input {
-        flex-grow: 1;
-        background: transparent;
-        border: none;
-        color: white;
-        font-size: 16px;
-        outline: none;
-        padding: 10px 0;
-    }
-    
-    /* 发送按钮样式 */
-    .send-btn {
-        background: none;
-        border: none;
-        color: #757575;
-        cursor: pointer;
-        font-size: 20px;
-        padding-left: 10px;
-    }
-    .send-btn:hover { color: #ffffff; }
 
     /* 侧边栏样式 */
     section[data-testid="stSidebar"] { background-color: #121212 !important; }
-    
     .block-container { padding-bottom: 120px !important; }
+
+    /* 确保输入框透明无边框 */
+    div[data-testid="stTextInput"] > div {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    input { color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -97,11 +85,10 @@ def export_to_word(msgs):
     doc.save(bio)
     return bio.getvalue()
 
-# 获取输入后的回调处理
+# 统一发送逻辑
 def handle_input():
     if st.session_state.user_text:
         st.session_state.messages.append({"role": "user", "content": st.session_state.user_text})
-        # 这里清除输入框
         st.session_state.user_text = ""
 
 # API 配置
@@ -150,16 +137,17 @@ else:
             st.markdown(message["content"])
 
 # ==========================================
-# 4. 【核心黑科技】一体化底部对话框
+# 4. 【核心黑科技】一体化底部对话框（精准按钮版）
 # ==========================================
 st.markdown('<div class="fixed-bottom-container">', unsafe_allow_html=True)
-c_icon, c_input = st.columns([0.4, 9.6])
+
+# 重新分配比例：加号 | 输入框 | 科技感发送键
+c_icon, c_input, c_btn = st.columns([0.4, 8.8, 0.8])
 
 with c_icon:
     with st.popover("＋"):
         st.write("🔧 扩展功能")
         st.toggle("开启深度联网", value=True)
-        st.write("更多工具开发中...")
 
 with c_input:
     st.text_input(
@@ -169,18 +157,24 @@ with c_input:
         label_visibility="collapsed",
         placeholder="问问 Astra，或者发送消息..."
     )
+
+with c_btn:
+    # 科技感十足的“极光发送”按钮
+    if st.button("✦", type="primary", on_click=handle_input):
+        st.rerun()
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
 # 5. AI 响应逻辑
 # ==========================================
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    last_user_msg = st.session_state.messages[-1]["content"]
     with st.chat_message("assistant"):
-        with st.spinner('Astra 正在飞速思考...'):
+        with st.spinner('Astra 正在以两坤半的时速为您分析...'):
             try:
-                # --- 核心修复：在这里告诉 AI 当前的正确时间 ---
-                sys_p = "你是 Astra 小星AI。今天的日期是 2026年1月18日。请专业且简洁地回答。"
+                current_date = datetime.now().strftime("%Y年%m月%d日")
+                sys_p = f"你是 Astra 小星AI。今天的日期是 {current_date}。请专业且简洁地回答。"
+                
                 if st.session_state.file_context:
                     sys_p += f"\n背景资料: {st.session_state.file_context[:2500]}"
 
